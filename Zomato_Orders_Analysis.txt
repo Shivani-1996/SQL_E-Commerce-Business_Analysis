@@ -1,0 +1,126 @@
+use Zomato_Orders;
+drop table if exists goldusers_signup;
+CREATE TABLE goldusers_signup(userid integer,gold_signup_date date); 
+
+INSERT INTO goldusers_signup(userid,gold_signup_date) 
+ VALUES (1,'2017-09-22'),
+(3,'2017-04-21');
+
+drop table if exists users;
+CREATE TABLE users(userid integer,signup_date date); 
+
+INSERT INTO users(userid,signup_date) 
+ VALUES (1,'2014-02-09'),
+(2,'2015-01-15'),
+(3,'2014-11-04');
+
+drop table if exists sales;
+CREATE TABLE sales(userid integer,created_date date,product_id integer); 
+
+INSERT INTO sales(userid,created_date,product_id) 
+ VALUES (1,'2017-04-19',2),
+(3,'2019-12-18',1),
+(2,'2020-07-20',3),
+(1,'2019-10-23',2),
+(1,'2018-03-19',3),
+(3,'2016-12-20',2),
+(1,'2016-11-09',1),
+(1,'2016-05-20',3),
+(2,'2017-09-24',1),
+(1,'2017-03-11',2),
+(1,'2016-03-11',1),
+(3,'2016-11-10',1),
+(3,'2017-12-07',2),
+(3,'2016-12-15',2),
+(2,'2017-11-08',2),
+(2,'2018-09-10',3);
+
+
+drop table if exists product;
+CREATE TABLE product(product_id integer,product_name text,price integer); 
+
+INSERT INTO product(product_id,product_name,price) 
+ VALUES
+(1,'p1',980),
+(2,'p2',870),
+(3,'p3',330);
+
+
+select * from sales;
+select * from product;
+select * from goldusers_signup;
+select * from users;
+
+-- Query 1:
+-- What is the total amount each user spent on Zomato-- 
+select userid, sum(price)
+from sales
+join product on sales.product_id=product.product_id
+Group by userid
+order by userid;
+
+-- Query 2:
+-- How many days each customer visited zomato?
+select userid,count(created_date)
+from sales
+group by userid
+order by userid;
+
+-- Query 2:
+-- What is the first product purchased by each customer?
+
+select *
+from (select *,rank() over(partition by userid order by created_date) rnk
+from sales) a where rnk=1;
+
+-- What is the most purchased item on the menu and how many times was it purchased by all customers?+
+select userid, count(product_id) from sales where product_id=
+(select product_id
+from sales
+group by product_id
+order by count(product_id) DESC
+LIMIT 1)
+group by userid
+order by userid;
+
+-- Which item was most popular to each of the customer?
+select userid, product_id from 
+(select userid,product_id,cnt, rank() over(partition by userid order by cnt DESC) AS rnk from
+(select userid, product_id ,count(product_id) cnt from sales group by userid,product_id order by userid,count(product_id) DESC)a)b where rnk=1;
+
+-- Which item was first purchased by customer after signin? 
+select userid, product_id from sales group by userid order by created_date ASC;
+select userid, product_id from
+(select userid, product_id, rank() over(partition by userid order by created_date ASC) rnk from sales)a where rnk=1; 
+
+-- Which item was first purchased by customer after they became gold member?
+with group1 as(
+select G.userid,created_date,product_id, gold_signup_date   
+from goldusers_signup  As G
+JOIN sales AS S
+on G.userid=S.userid)
+
+select userid, product_id
+from (Select userid,product_id,rank() over(partition by userid order by created_date ASC) rnk from group1)b where rnk=1
+
+- Which item was first purchased by customer before becoming gold member? 
+
+select userid,gold_signup_date,created_date,product_id 
+from (select * ,rank() over(partition by gold_signup_date order by created_date DESC) AS rnk
+from(select S.userid,gold_signup_date,created_date,product_id from sales as S JOIN goldusers_signup AS G on S.userid=G.userid AND S.created_date<G.gold_signup_date order by S.userid ASC,created_date ASC)a)b
+where rnk=1 ;
+
+-- What is the total numbers of orders done by each member and amount aspent by each member before they took gold membership?
+
+-- Order done by each meber  before they took gold membership
+select S.userid, count(product_id) AS Count_Product_id
+from sales AS S
+JOIN goldusers_signup AS G ON S.userid=G.userid AND S.created_date<G.gold_signup_date
+group by S.userid;
+
+-- amount aspent by each member before they took gold membership
+select S.userid,sum(price) As Amount_Spent, count(S.product_id)
+from sales AS S
+JOIN goldusers_signup AS G ON S.userid=G.userid AND S.created_date<G.gold_signup_date
+JOIN product AS P ON P.product_id=G.userid
+group by S.userid
